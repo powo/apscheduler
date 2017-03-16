@@ -24,6 +24,7 @@ class CronTrigger(BaseTrigger):
     :param datetime|str end_date: latest possible date/time to trigger on (inclusive)
     :param datetime.tzinfo|str timezone: time zone to use for the date/time calculations
                                          (defaults to scheduler timezone)
+    :param datetime.timedelta|int offset: time offset to be added to the resulting trigger time
 
     .. note:: The first weekday is always **monday**.
     """
@@ -40,10 +41,11 @@ class CronTrigger(BaseTrigger):
         'second': BaseField
     }
 
-    __slots__ = 'timezone', 'start_date', 'end_date', 'fields'
+    __slots__ = 'timezone', 'start_date', 'end_date', 'fields', 'offset'
 
-    def __init__(self, year=None, month=None, day=None, week=None, day_of_week=None, hour=None, minute=None,
-                 second=None, start_date=None, end_date=None, timezone=None):
+    def __init__(self, year=None, month=None, day=None, week=None, day_of_week=None, hour=None, 
+                 minute=None, second=None, start_date=None, end_date=None, timezone=None,
+                 offset=0):
         if timezone:
             self.timezone = astimezone(timezone)
         elif start_date and start_date.tzinfo:
@@ -55,6 +57,18 @@ class CronTrigger(BaseTrigger):
 
         self.start_date = convert_to_datetime(start_date, self.timezone, 'start_date')
         self.end_date = convert_to_datetime(end_date, self.timezone, 'end_date')
+
+        if offset is None:
+            self.offset = timedelta(seconds=0)
+        elif isinstance(offset, timedelta):
+            self.offset = offset
+        elif isinstance(offset, six.integer_types):
+            self.offset = timedelta(seconds=offset)
+        else:
+            try:
+                self.offset = timedelta(seconds=int(offset))
+            except:
+                raise TypeError('Invalid offset: {0!r}'.format(offset))
 
         values = dict((key, value) for (key, value) in six.iteritems(locals())
                       if key in self.FIELD_NAMES and value is not None)
@@ -75,6 +89,7 @@ class CronTrigger(BaseTrigger):
             field_class = self.FIELDS_MAP[field_name]
             field = field_class(field_name, exprs, is_default)
             self.fields.append(field)
+        self.offset = offset
 
     def _increment_field_value(self, dateval, fieldnum):
         """
@@ -133,7 +148,7 @@ class CronTrigger(BaseTrigger):
 
     def get_next_fire_time(self, previous_fire_time, now):
         if previous_fire_time:
-            start_date = max(now, previous_fire_time + timedelta(microseconds=1))
+            start_date = max(now, previous_fire_time - timedelta(seconds=self.offset) + timedelta(microseconds=1))
         else:
             start_date = max(now, self.start_date) if self.start_date else now
 
@@ -159,18 +174,24 @@ class CronTrigger(BaseTrigger):
                 fieldnum += 1
 
             # Return if the date has rolled past the end date
-            if self.end_date and next_date > self.end_date:
+            if self.end_date and next_date + self.offset > self.end_date:
                 return None
 
         if fieldnum >= 0:
-            return next_date
+            if self.offset:
+                next_date = next_date + timedelta(seconds=self.offset)
+            return next_date + self.offset
 
     def __str__(self):
         options = ["%s='%s'" % (f.name, f) for f in self.fields if not f.is_default]
+        if self.offset:
+            options.append("offset=%d" % self.offset.total_seconds())
         return 'cron[%s]' % (', '.join(options))
 
     def __repr__(self):
         options = ["%s='%s'" % (f.name, f) for f in self.fields if not f.is_default]
         if self.start_date:
             options.append("start_date='%s'" % datetime_repr(self.start_date))
+        if self.offset:
+            options.append("offset='%s'" % repr(self.offset))
         return '<%s (%s)>' % (self.__class__.__name__, ', '.join(options))

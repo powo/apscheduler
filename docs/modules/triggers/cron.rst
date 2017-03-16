@@ -98,6 +98,16 @@ You can use ``start_date`` and ``end_date`` to limit the total time in which the
     # Runs from Monday to Friday at 5:30 (am) until 2014-05-30 00:00:00
     sched.add_job(job_function, 'cron', day_of_week='mon-fri', hour=5, minute=30, end_date='2014-05-30')
 
+The optional ``offset`` argument (can be given as number of seconds or timedelta object) allows to 
+shift the resulting cron schedule in either positive or negative direction::
+
+    # Runs at 11:00 (pm) on the last day of every month
+    sched.add_job(job_function, 'cron', day=1, hour=23, minute=0, offset=-86400)
+    
+    # Runs a job on the first Monday every Month and another job one day later
+    sched.add_job(job1, 'cron', day_of_week='mon', day='1-7', hour=5, minute=0)
+    sched.add_job(job2, 'cron', day_of_week='mon', day='1-7', hour=5, minute=0, offset=timedelta(days=1))
+
 
 The :meth:`~apscheduler.schedulers.base.BaseScheduler.scheduled_job` decorator works nicely too::
 
