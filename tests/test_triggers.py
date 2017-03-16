@@ -168,6 +168,44 @@ class TestCronTrigger(object):
         correct_next_date = timezone.localize(datetime(2009, 9, 26, 5))
         assert trigger.get_next_fire_time(None, start_date) == correct_next_date
 
+
+    def test_cron_offset_negative(self, timezone):
+        trigger = CronTrigger(year='*', month='*', day=1, hour=6, timezone=timezone, offset=-86400)
+        assert repr(trigger) == ("<CronTrigger (year='*', month='*', day='1', "
+                                 "hour='6', offset='datetime.timedelta(-1)')>")
+        assert str(trigger) == ("cron[year='*', month='*', day='1', "
+                                "hour='6', offset=-86400]")
+        start_date = timezone.localize(datetime(2015, 11, 30, 7))
+        correct_next_date = timezone.localize(datetime(2015, 12, 31, 6))
+        assert trigger.get_next_fire_time(None, start_date) == correct_next_date
+
+    def test_cron_offset_negative_2(self, timezone):
+        trigger = CronTrigger(year='*', month='*', day=1, hour=6, timezone=timezone, offset=-86400)
+        start_date = timezone.localize(datetime(2015, 12, 31, 6, 0, 1))
+        prev_fire_date = timezone.localize(datetime(2015, 12, 31, 6))
+        correct_next_date = timezone.localize(datetime(2016, 1, 31, 6))
+        assert trigger.get_next_fire_time(prev_fire_date, start_date) == correct_next_date
+
+    def test_cron_offset_nextmonth(self, timezone):
+        trigger = CronTrigger(year='*', day=28, hour=6, timezone=timezone,
+                              offset=timedelta(days=2, hours=2))
+        assert repr(trigger) == ("<CronTrigger (year='*', day='28', "
+                                 "hour='6', offset='datetime.timedelta(2, 7200)')>")
+        assert str(trigger) == ("cron[year='*', day='28', "
+                                "hour='6', offset=180000]")
+        start_date = timezone.localize(datetime(2016, 2, 2))
+        correct_next_date = timezone.localize(datetime(2016, 3, 1, 8))
+        assert trigger.get_next_fire_time(None, start_date) == correct_next_date
+
+    def test_cron_offset_nextmonth_2(self, timezone):
+        trigger = CronTrigger(year='*', day=28, hour=6, timezone=timezone,
+                              offset=timedelta(days=2, hours=2))
+        start_date = timezone.localize(datetime(2016, 3, 1, 8, 0, 1))
+        prev_fire_date = timezone.localize(datetime(2016, 3, 1, 8))
+        correct_next_date = timezone.localize(datetime(2016, 3, 30, 8))
+        assert trigger.get_next_fire_time(prev_fire_date, start_date) == correct_next_date
+
+
     def test_cron_bad_kwarg(self, timezone):
         pytest.raises(TypeError, CronTrigger, second=0, third=1, timezone=timezone)
 

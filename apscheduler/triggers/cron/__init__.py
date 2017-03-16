@@ -26,6 +26,7 @@ class CronTrigger(BaseTrigger):
     :param datetime|str end_date: latest possible date/time to trigger on (inclusive)
     :param datetime.tzinfo|str timezone: time zone to use for the date/time calculations (defaults
         to scheduler timezone)
+    :param datetime.timedelta|int offset: time offset to be added to the resulting trigger time
 
     .. note:: The first weekday is always **monday**.
     """
@@ -42,10 +43,11 @@ class CronTrigger(BaseTrigger):
         'second': BaseField
     }
 
-    __slots__ = 'timezone', 'start_date', 'end_date', 'fields'
+    __slots__ = 'timezone', 'start_date', 'end_date', 'fields', 'offset'
 
     def __init__(self, year=None, month=None, day=None, week=None, day_of_week=None, hour=None,
-                 minute=None, second=None, start_date=None, end_date=None, timezone=None):
+                 minute=None, second=None, start_date=None, end_date=None, timezone=None,
+                 offset=None):
         if timezone:
             self.timezone = astimezone(timezone)
         elif isinstance(start_date, datetime) and start_date.tzinfo:
@@ -57,6 +59,18 @@ class CronTrigger(BaseTrigger):
 
         self.start_date = convert_to_datetime(start_date, self.timezone, 'start_date')
         self.end_date = convert_to_datetime(end_date, self.timezone, 'end_date')
+
+        if offset is None:
+            self.offset = timedelta(seconds=0)
+        elif isinstance(offset, timedelta):
+            self.offset = offset
+        elif isinstance(offset, six.integer_types):
+            self.offset = timedelta(seconds=offset)
+        else:
+            try:
+                self.offset = timedelta(seconds=int(offset))
+            except:
+                raise TypeError('Invalid offset: {0!r}'.format(offset))
 
         values = dict((key, value) for (key, value) in six.iteritems(locals())
                       if key in self.FIELD_NAMES and value is not None)
@@ -142,6 +156,9 @@ class CronTrigger(BaseTrigger):
         else:
             start_date = max(now, self.start_date) if self.start_date else now
 
+        # the cron-calculation shouldn't know about the offset, we'll add it on return-value again
+        start_date -= self.offset
+
         fieldnum = 0
         next_date = datetime_ceil(start_date).astimezone(self.timezone)
         while 0 <= fieldnum < len(self.fields):
@@ -164,11 +181,11 @@ class CronTrigger(BaseTrigger):
                 fieldnum += 1
 
             # Return if the date has rolled past the end date
-            if self.end_date and next_date > self.end_date:
+            if self.end_date and next_date + self.offset > self.end_date:
                 return None
 
         if fieldnum >= 0:
-            return next_date
+            return next_date + self.offset
 
     def __getstate__(self):
         return {
@@ -196,11 +213,15 @@ class CronTrigger(BaseTrigger):
 
     def __str__(self):
         options = ["%s='%s'" % (f.name, f) for f in self.fields if not f.is_default]
+        if self.offset:
+            options.append("offset=%d" % self.offset.total_seconds())
         return 'cron[%s]' % (', '.join(options))
 
     def __repr__(self):
         options = ["%s='%s'" % (f.name, f) for f in self.fields if not f.is_default]
         if self.start_date:
             options.append("start_date='%s'" % datetime_repr(self.start_date))
+        if self.offset:
+            options.append("offset='%s'" % repr(self.offset))
         return "<%s (%s, timezone='%s')>" % (
             self.__class__.__name__, ', '.join(options), self.timezone)
